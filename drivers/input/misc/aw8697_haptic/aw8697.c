@@ -301,7 +301,8 @@ static int aw8697_i2c_write(struct aw8697 *aw8697,
 			break;
 		}
 		cnt++;
-		msleep(AW_I2C_RETRY_DELAY);
+		usleep_range(AW_I2C_RETRY_DELAY * 1000,
+			     AW_I2C_RETRY_DELAY * 1000 + 500);
 	}
 
 	return ret;
@@ -323,7 +324,8 @@ static int aw8697_i2c_read(struct aw8697 *aw8697,
 			break;
 		}
 		cnt++;
-		msleep(AW_I2C_RETRY_DELAY);
+		usleep_range(AW_I2C_RETRY_DELAY * 1000,
+			     AW_I2C_RETRY_DELAY * 1000 + 500);
 	}
 
 	return ret;
@@ -919,6 +921,7 @@ static int aw8697_haptic_play_mode(struct aw8697 *aw8697,
 					      AW869XX_BIT_PLAYCFG1_BST_MODE_MASK,
 					      AW869XX_BIT_PLAYCFG1_BST_MODE_BOOST);
 		}
+		usleep_range(2000, 2500);
 		break;
 	case AW8697_HAPTIC_RAM_LOOP_MODE:
 		aw8697->play_mode = AW8697_HAPTIC_RAM_LOOP_MODE;
@@ -958,6 +961,7 @@ static int aw8697_haptic_play_mode(struct aw8697 *aw8697,
 					      AW869XX_BIT_PLAYCFG1_BST_MODE_MASK,
 					      AW869XX_BIT_PLAYCFG1_BST_MODE_BOOST);
 		}
+		usleep_range(2000, 2500);
 		break;
 	case AW8697_HAPTIC_TRIG_MODE:
 		aw8697->play_mode = AW8697_HAPTIC_TRIG_MODE;
@@ -971,6 +975,7 @@ static int aw8697_haptic_play_mode(struct aw8697 *aw8697,
 					      AW869XX_BIT_PLAYCFG3_PLAY_MODE_MASK,
 					      AW869XX_BIT_PLAYCFG3_PLAY_MODE_RAM);
 		}
+		usleep_range(2000, 2500);
 		break;
 	case AW8697_HAPTIC_CONT_MODE:
 		aw8697->play_mode = AW8697_HAPTIC_CONT_MODE;
@@ -1026,10 +1031,9 @@ static int aw8697_haptic_stop_delay(struct aw8697 *aw8697)
 
 	while (cnt--) {
 		aw8697_i2c_read(aw8697, AW8697_REG_GLB_STATE, &reg_val);
-		if ((reg_val & 0x0f) == 0x00) {
+		if ((reg_val & 0x0f) == 0x00)
 			return 0;
-		}
-		msleep(2);
+		usleep_range(2000, 2500);
 		pr_debug("%s wait for standby, reg glb_state=0x%02x\n",
 			 __func__, reg_val);
 	}

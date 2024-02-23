@@ -326,6 +326,7 @@ struct fg_gen4_chip {
 	int			scale_timer;
 	int			current_now;
 	int			calib_level;
+	int			vbat_critical_low_count;
 	bool			first_profile_load;
 	bool			ki_coeff_dischg_en;
 	bool			slope_limit_en;
@@ -2600,9 +2601,11 @@ static void fg_gen4_post_profile_load(struct fg_gen4_chip *chip)
 	}
 
 	/* Restore the cycle counters so that it would be valid at this point */
-	rc = restore_cycle_count(chip->counter);
-	if (rc < 0)
-		pr_err("Error in restoring cycle_count, rc=%d\n", rc);
+	if (!chip->dt.fg_cycle_disable) {
+		rc = restore_cycle_count(chip->counter);
+		if (rc < 0)
+			pr_err("Error in restoring cycle_count, rc=%d\n", rc);
+	}
 }
 
 static void profile_load_work(struct work_struct *work)
@@ -2712,7 +2715,7 @@ done:
 
 	batt_psy_initialized(fg);
 	fg_notify_charger(fg);
-
+	power_supply_changed(fg->fg_psy);
 	schedule_delayed_work(&chip->ttf->ttf_work, msecs_to_jiffies(10000));
 	fg_dbg(fg, FG_STATUS, "profile loaded successfully");
 out:
@@ -3674,6 +3677,20 @@ static irqreturn_t fg_vbatt_low_irq_handler(int irq, void *data)
 	if (vbatt_mv < chip->dt.cutoff_volt_mv) {
 		if (chip->dt.rapid_soc_dec_en) {
 			/*
+			* This function handles the critical low voltage scenario to prevent shutdown
+			* in extreme temperature and high current conditions. It tracks the number of
+			* occurrences of the critical low voltage condition and takes action if it
+			* surpasses a threshold.
+			*/
+			chip->vbat_critical_low_count++;
+			if (chip->vbat_critical_low_count < EMPTY_DEBOUNCE_TIME_COUNT_MAX
+					&& vbatt_mv > VBAT_CRITICAL_LOW_THR) {
+				if (batt_psy_initialized(fg))
+					power_supply_changed(fg->batt_psy);
+				return IRQ_HANDLED;
+			}
+
+			/*
 			 * Set this flag so that slope limiter coefficient
 			 * cannot be configured during rapid SOC decrease.
 			 */
@@ -4296,7 +4313,6 @@ static void pl_enable_work(struct work_struct *work)
 }
 
 #ifdef CONFIG_BATT_VERIFY_BY_DS28E16
-
 static void battery_authentic_work(struct work_struct *work)
 {
 	int rc;
@@ -4434,6 +4450,75 @@ static void ds_page0_work(struct work_struct *work)
 			pval.arrayval[12], pval.arrayval[13], pval.arrayval[14], pval.arrayval[15]);
 	}
 }
+
+static int sync_cycle_count(struct fg_gen4_chip *chip, bool charge_done)
+{
+	int cycle_count;
+	int maxim_cycle_count;
+	int id;
+	int rc;
+	int temp;
+	uint32_t cycle_count_value;
+	uint32_t base_value;
+	uint32_t extra_count;
+	static bool is_nvmem_written;
+	struct fg_dev *fg = &chip->fg;
+	union power_supply_propval prop = {0, };
+	u16 count[BUCKET_COUNT];
+
+	if (!fg->max_verify_psy) {
+		fg->max_verify_psy = power_supply_get_by_name("batt_verify");
+		if (!fg->max_verify_psy) {
+			return -ENODEV;
+		}
+	}
+
+	if (charge_done) {
+		prop.intval = 1;
+		power_supply_set_property(fg->max_verify_psy,
+					  POWER_SUPPLY_PROP_CYCLE_COUNT, &prop);
+	}
+
+	if (!is_nvmem_written) {
+		rc = nvmem_device_read(chip->fg_nvmem, SDAM_CYCLE_COUNT_OFFSET,
+				       sizeof(count), (u8 *)count);
+		if (rc < 0) {
+			pr_err("Failed to read NVMEM\n");
+			return rc;
+		}
+
+		for (id = 0; id < BUCKET_COUNT; id++)
+			temp += count[id];
+		cycle_count = temp / 100;
+
+		power_supply_get_property(fg->max_verify_psy,
+					  POWER_SUPPLY_PROP_CYCLE_COUNT, &prop);
+		maxim_cycle_count = prop.intval;
+
+		cycle_count_value = maxim_cycle_count * 100;
+		base_value = cycle_count_value / BUCKET_COUNT;
+		extra_count = cycle_count_value % BUCKET_COUNT;
+
+		for (id = 0; id < BUCKET_COUNT; id++) {
+			count[id] = base_value;
+		}
+
+		count[BUCKET_COUNT - 1] += extra_count;
+
+		if ((cycle_count == INT_MIN || cycle_count == INT_MAX || (maxim_cycle_count > cycle_count))) {
+			rc = nvmem_device_write(chip->fg_nvmem,
+						SDAM_CYCLE_COUNT_OFFSET,
+						sizeof(count), (u8 *)count);
+			if (rc < 0) {
+				pr_err("Failed to write to NVMEM\n");
+				return rc;
+			}
+		}
+		is_nvmem_written = true;
+	}
+
+	return 0;
+}
 #endif
 
 static void status_change_work(struct work_struct *work)
@@ -4487,6 +4572,9 @@ static void status_change_work(struct work_struct *work)
 	qnovo_en = is_qnovo_en(fg);
 	cycle_count_update(chip->counter, (u32)batt_soc >> 24,
 		fg->charge_status, fg->charge_done, input_present);
+#ifdef CONFIG_BATT_VERIFY_BY_DS28E16
+	sync_cycle_count(chip, fg->charge_done);
+#endif
 
 	batt_soc_cp = div64_u64((u64)(u32)batt_soc * CENTI_FULL_SOC,
 				BATT_SOC_32BIT);
@@ -6756,9 +6844,8 @@ static int fg_gen4_probe(struct platform_device *pdev)
 	chip->esr_soh_cycle_count = -EINVAL;
 	chip->calib_level = -EINVAL;
 	chip->soh = -EINVAL;
+	chip->vbat_critical_low_count = 0;
 #ifdef CONFIG_BATT_VERIFY_BY_DS28E16
-	fg->cycle_count = INT_MIN;
-	fg->maxim_cycle_count = INT_MIN;
 	chip->battery_authentic_result = -EINVAL;
 	memset(chip->ds_page0, 0, 16);
 	memset(chip->ds_romid, 0, 8);

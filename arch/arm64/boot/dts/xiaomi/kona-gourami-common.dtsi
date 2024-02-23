@@ -14,7 +14,6 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include "qcom-base/kona-pmic-overlay.dtsi"
-#include "qcom-base/kona-thermal-overlay.dtsi"
 
 #include "kona-gourami-audio.dtsi"
 #include "kona-gourami-battery.dtsi"

@@ -538,13 +538,13 @@ static inline void pm_print_times_init(void) {}
 /* If set, devices will stuck at suspend for verification */
 static bool pm_hang_enabled;
 
-static int pm_notify_test(struct notifier_block *nb,
-			     unsigned long mode, void *_unused)
+static int pm_notify_test(struct notifier_block *nb, unsigned long mode,
+			  void *_unused)
 {
 	pr_info("Jump into infinite loop now\n");
 
 	/* Suspend thread stuck at a loop forever */
-	for(;;)
+	for (;;)
 		;
 
 	pr_info("Fail to stuck at loop\n");
@@ -557,13 +557,13 @@ static struct notifier_block pm_notify_nb = {
 };
 
 static ssize_t pm_hang_show(struct kobject *kobj, struct kobj_attribute *attr,
-			     char *buf)
+			    char *buf)
 {
 	return snprintf(buf, 10, "%d\n", pm_hang_enabled);
 }
 
 static ssize_t pm_hang_store(struct kobject *kobj, struct kobj_attribute *attr,
-			      const char *buf, size_t n)
+			     const char *buf, size_t n)
 {
 	unsigned long val;
 	int result;
@@ -577,14 +577,12 @@ static ssize_t pm_hang_store(struct kobject *kobj, struct kobj_attribute *attr,
 	pm_hang_enabled = !!val;
 
 	if (pm_hang_enabled == true) {
-
 		result = register_pm_notifier(&pm_notify_nb);
 		if (result)
 			pr_warn("Can not register suspend notifier, return %d\n",
 				result);
 
 	} else {
-
 		result = unregister_pm_notifier(&pm_notify_nb);
 		if (result)
 			pr_warn("Can not unregister suspend notifier, return %d\n",

@@ -1,21 +1,17 @@
 ARCH=arm64
 KMI_GENERATION=0
 CROSS_COMPILE=aarch64-linux-gnu-
-CROSS_COMPILE_ARM32=arm-none-eabi-
-CROSS_COMPILE_COMPAT=$CROSS_COMPILE_ARM32
 
 LLVM=1
 LLVM_IAS=1
 DEPMOD=depmod
-CLANG_PREBUILT_BIN=prebuilts-master/clang/host/linux-x86/clang-r458507/bin
+CLANG_PREBUILT_BIN=prebuilts-master/clang/host/linux-x86/clang-r450784e/bin
 BUILDTOOLS_PREBUILT_BIN=build/build-tools/path/linux-x86
 
 EXTRA_CMDS=''
-LD_LIBRARY_PATH=${ROOT_DIR}/prebuilts-master/clang/host/linux-x86/clang-r458507/lib64:$LD_LIBRARY_PATH
+LD_LIBRARY_PATH=${ROOT_DIR}/prebuilts-master/clang/host/linux-x86/clang-r450784e/lib64:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH
 LINUX_GCC_CROSS_COMPILE_PREBUILTS_BIN=prebuilts/gas/linux-x86
-LINUX_GCC_CROSS_COMPILE_ARM32_PREBUILTS_BIN=prebuilts/gas/linux-x86
-LINUX_GCC_CROSS_COMPILE_COMPAT_PREBUILTS_BIN=$LINUX_GCC_CROSS_COMPILE_ARM32_PREBUILTS_BIN
 LIBUFDT_PREBUILTS_BIN=prebuilts-master/misc/linux-x86/libufdt
 DTC_EXT=${ROOT_DIR}/prebuilts/kernel-build-tools/linux-x86/bin/dtc
 export DTC_EXT
@@ -35,3 +31,5 @@ wlan.ko
 "
 IN_KERNEL_MODULES=1
 STOP_SHIP_TRACEPRINTK=1
+
+KLEAF_SUPPRESS_BUILD_SH_DEPRECATION_WARNING=1

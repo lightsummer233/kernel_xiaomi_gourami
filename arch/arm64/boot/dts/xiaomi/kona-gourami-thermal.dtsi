@@ -209,19 +209,19 @@
 };
 
 &vbat_lvl0 {
-	temperature = <3200>;
+	temperature = <3300>;
 	hysteresis = <200>;
 	type = "passive";
 };
 
 &vbat_lvl1 {
-	temperature = <3100>;
+	temperature = <3200>;
 	hysteresis = <200>;
 	type = "passive";
 };
 
 &vbat_lvl2 {
-	temperature = <3000>;
+	temperature = <3100>;
 	hysteresis = <200>;
 	type = "passive";
 };
@@ -472,6 +472,12 @@
 				trip = <&soc_tips>;
 				cooling-device = <&msm_gpu 4 4>;
 			};
+			soc_npu {
+				trip = <&soc_tips>;
+				cooling-device =
+					<&msm_npu (THERMAL_MAX_LIMIT-3)
+					(THERMAL_MAX_LIMIT-3)>;
+			};
 		};
 	};
 
@@ -491,6 +497,12 @@
 			bcl_gpu0 {
 				trip = <&b_bcl_lvl0>;
 				cooling-device = <&msm_gpu 4 4>;
+			};
+			bcl_npu {
+				trip = <&b_bcl_lvl0>;
+				cooling-device =
+					<&msm_npu THERMAL_MAX_LIMIT
+					THERMAL_MAX_LIMIT>;
 			};
 		};
 	};
@@ -523,7 +535,17 @@
 			bcl_cpu0 {
 				trip = <&b_bcl_lvl2>;
 				cooling-device =
-					<&CPU0 6 6>;
+					<&CPU0 8 8>;
+			};
+			bcl_cpu6 {
+				trip = <&b_bcl_lvl2>;
+				cooling-device =
+					<&cpu6_isolate 1 1>;
+			};
+			bcl_cpu7 {
+				trip = <&b_bcl_lvl2>;
+				cooling-device =
+					<&cpu7_isolate 1 1>;
 			};
 			bcl_gpu2 {
 				trip = <&b_bcl_lvl2>;

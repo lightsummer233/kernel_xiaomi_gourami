@@ -567,7 +567,7 @@ static int msm_drm_display_thread_create(struct sched_param param,
 				&priv->disp_thread[i].worker,
 				"crtc_commit:%d", priv->disp_thread[i].crtc_id);
 		ret = sched_setscheduler(priv->disp_thread[i].thread,
-							SCHED_RR, &param);
+							SCHED_FIFO, &param);
 		if (ret)
 			pr_warn("display thread priority update failed: %d\n",
 									ret);
@@ -593,7 +593,7 @@ static int msm_drm_display_thread_create(struct sched_param param,
 		 * failure at crtc commit level.
 		 */
 		ret = sched_setscheduler(priv->event_thread[i].thread,
-							SCHED_RR, &param);
+							SCHED_FIFO, &param);
 		if (ret)
 			pr_warn("display event thread priority update failed: %d\n",
 									ret);
@@ -633,7 +633,7 @@ static int msm_drm_display_thread_create(struct sched_param param,
 			&priv->pp_event_worker, "pp_event");
 
 	ret = sched_setscheduler(priv->pp_event_thread,
-						SCHED_RR, &param);
+						SCHED_FIFO, &param);
 	if (ret)
 		pr_warn("pp_event thread priority update failed: %d\n",
 								ret);

@@ -1678,7 +1678,6 @@ int cnss_pci_call_driver_probe(struct cnss_pci_data *pci_priv)
 				    ret);
 			goto out;
 		}
-		clear_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state);
 		complete(&plat_priv->recovery_complete);
 	} else if (test_bit(CNSS_DRIVER_LOADING, &plat_priv->driver_state)) {
 		ret = pci_priv->driver_ops->probe(pci_priv->pci_dev,
@@ -1688,7 +1687,6 @@ int cnss_pci_call_driver_probe(struct cnss_pci_data *pci_priv)
 				    ret);
 			goto out;
 		}
-		clear_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state);
 		clear_bit(CNSS_DRIVER_LOADING, &plat_priv->driver_state);
 		set_bit(CNSS_DRIVER_PROBED, &plat_priv->driver_state);
 		complete_all(&plat_priv->power_up_complete);
@@ -1703,11 +1701,15 @@ int cnss_pci_call_driver_probe(struct cnss_pci_data *pci_priv)
 			complete_all(&plat_priv->power_up_complete);
 			goto out;
 		}
-		clear_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state);
 		clear_bit(CNSS_DRIVER_IDLE_RESTART, &plat_priv->driver_state);
 		complete_all(&plat_priv->power_up_complete);
 	} else {
 		complete(&plat_priv->power_up_complete);
+	}
+
+	if (test_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state)) {
+		clear_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state);
+		__pm_relax(plat_priv->recovery_ws);
 	}
 
 	cnss_pci_start_time_sync_update(pci_priv);
@@ -2946,7 +2948,7 @@ out:
 	return ret;
 }
 
-static int cnss_pci_suspend_noirq(struct device *dev)
+static int cnss_pci_suspend_late(struct device *dev)
 {
 	int ret = 0;
 	struct pci_dev *pci_dev = to_pci_dev(dev);
@@ -2960,14 +2962,14 @@ static int cnss_pci_suspend_noirq(struct device *dev)
 		goto out;
 
 	driver_ops = pci_priv->driver_ops;
-	if (driver_ops && driver_ops->suspend_noirq)
-		ret = driver_ops->suspend_noirq(pci_dev);
+	if (driver_ops && driver_ops->suspend_late)
+		ret = driver_ops->suspend_late(pci_dev);
 
 out:
 	return ret;
 }
 
-static int cnss_pci_resume_noirq(struct device *dev)
+static int cnss_pci_resume_late(struct device *dev)
 {
 	int ret = 0;
 	struct pci_dev *pci_dev = to_pci_dev(dev);
@@ -2981,9 +2983,9 @@ static int cnss_pci_resume_noirq(struct device *dev)
 		goto out;
 
 	driver_ops = pci_priv->driver_ops;
-	if (driver_ops && driver_ops->resume_noirq &&
+	if (driver_ops && driver_ops->resume_late &&
 	    !pci_priv->pci_link_down_ind)
-		ret = driver_ops->resume_noirq(pci_dev);
+		ret = driver_ops->resume_late(pci_dev);
 
 out:
 	return ret;
@@ -5042,14 +5044,12 @@ static void cnss_pci_config_regs(struct cnss_pci_data *pci_priv)
  * from pci_dev_pm_ops.
  */
 static struct dev_pm_domain cnss_pm_domain = {
-	.ops = {
-		SET_SYSTEM_SLEEP_PM_OPS(cnss_pci_suspend, cnss_pci_resume)
-		SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(cnss_pci_suspend_noirq,
-					      cnss_pci_resume_noirq)
-		SET_RUNTIME_PM_OPS(cnss_pci_runtime_suspend,
-				   cnss_pci_runtime_resume,
-				   cnss_pci_runtime_idle)
-	}
+	.ops = { SET_SYSTEM_SLEEP_PM_OPS(cnss_pci_suspend, cnss_pci_resume)
+			 SET_LATE_SYSTEM_SLEEP_PM_OPS(cnss_pci_suspend_late,
+						      cnss_pci_resume_late)
+				 SET_RUNTIME_PM_OPS(cnss_pci_runtime_suspend,
+						    cnss_pci_runtime_resume,
+						    cnss_pci_runtime_idle) }
 };
 
 static int cnss_pci_probe(struct pci_dev *pci_dev,
@@ -5223,10 +5223,11 @@ MODULE_DEVICE_TABLE(pci, cnss_pci_id_table);
 
 static const struct dev_pm_ops cnss_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(cnss_pci_suspend, cnss_pci_resume)
-	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(cnss_pci_suspend_noirq,
-				      cnss_pci_resume_noirq)
-	SET_RUNTIME_PM_OPS(cnss_pci_runtime_suspend, cnss_pci_runtime_resume,
-			   cnss_pci_runtime_idle)
+		SET_LATE_SYSTEM_SLEEP_PM_OPS(cnss_pci_suspend_late,
+					     cnss_pci_resume_late)
+			SET_RUNTIME_PM_OPS(cnss_pci_runtime_suspend,
+					   cnss_pci_runtime_resume,
+					   cnss_pci_runtime_idle)
 };
 
 struct pci_driver cnss_pci_driver = {

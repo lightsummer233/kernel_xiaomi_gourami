@@ -127,9 +127,6 @@ static struct dentry *__kernfs_fh_to_dentry(struct super_block *sb,
 
 	inode = kernfs_get_inode(sb, kn);
 	kernfs_put(kn);
-	if (!inode)
-		return ERR_PTR(-ESTALE);
-
 	return d_obtain_alias(inode);
 }
 
@@ -371,9 +368,9 @@ struct dentry *kernfs_mount_ns(struct file_system_type *fs_type, int flags,
 		}
 		sb->s_flags |= SB_ACTIVE;
 
-		down_write(&root->kernfs_rwsem);
+		down_write(&root->kernfs_supers_rwsem);
 		list_add(&info->node, &root->supers);
-		up_write(&root->kernfs_rwsem);
+		up_write(&root->kernfs_supers_rwsem);
 	}
 
 	return dget(sb->s_root);
@@ -392,9 +389,9 @@ void kernfs_kill_sb(struct super_block *sb)
 	struct kernfs_super_info *info = kernfs_info(sb);
 	struct kernfs_root *root = info->root;
 
-	down_write(&root->kernfs_rwsem);
+	down_write(&root->kernfs_supers_rwsem);
 	list_del(&info->node);
-	up_write(&root->kernfs_rwsem);
+	up_write(&root->kernfs_supers_rwsem);
 
 	/*
 	 * Remove the superblock from fs_supers/s_instances

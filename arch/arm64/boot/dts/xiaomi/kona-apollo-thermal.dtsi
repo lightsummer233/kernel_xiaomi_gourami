@@ -74,6 +74,12 @@
 				cooling-device =
 					<&CPU7 8 8>;
 			};
+			npu-nominal-l1 {
+				trip = <&skin_cpu_moderate_pre_lv1>;
+				cooling-device =
+					<&msm_npu (THERMAL_MAX_LIMIT-3)
+					(THERMAL_MAX_LIMIT-3)>;
+			};
 			/* moderate pre level 2 throttling */
 			cpu0-nominal-l2 {
 				trip = <&skin_cpu_moderate_pre_lvl2>;

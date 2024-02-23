@@ -113,7 +113,7 @@ static void suspend_timeout(int timeout_count)
 	char *null_pointer = NULL;
 
 	pr_info("Suspend monitor timeout (timer is %d seconds)\n",
-		(SUSPEND_TIMER_TIMEOUT_MS/1000));
+		(SUSPEND_TIMER_TIMEOUT_MS / 1000));
 
 	show_state_filter(TASK_UNINTERRUPTIBLE);
 
@@ -135,8 +135,7 @@ static void suspend_timeout(int timeout_count)
 static int suspend_monitor_kthread(void *arg)
 {
 	long err;
-	struct sched_param param = {.sched_priority
-		= MAX_RT_PRIO-1};
+	struct sched_param param = { .sched_priority = MAX_RT_PRIO - 1 };
 	static int timeout_count;
 	static long timeout;
 
@@ -151,8 +150,7 @@ static int suspend_monitor_kthread(void *arg)
 		/* Wait suspend timer timeout */
 		err = wait_event_interruptible_timeout(
 			power_suspend_waitqueue,
-			(suspend_mon_toggle != TOGGLE_NONE),
-			timeout);
+			(suspend_mon_toggle != TOGGLE_NONE), timeout);
 
 		mutex_lock(&suspend_mon_lock);
 		/* suspend monitor state change */
@@ -189,13 +187,14 @@ static void init_suspend_monitor_thread(void)
 {
 	int ret;
 
-	ksuspend_mon_tsk = kthread_create(suspend_monitor_kthread,
-		NULL, "ksuspend_mon");
+	ksuspend_mon_tsk =
+		kthread_create(suspend_monitor_kthread, NULL, "ksuspend_mon");
 	if (IS_ERR(ksuspend_mon_tsk)) {
 		ret = PTR_ERR(ksuspend_mon_tsk);
 		ksuspend_mon_tsk = NULL;
 		pr_err("Create suspend_monitor_kthread failed!"
-			" ret = %d\n", ret);
+		       " ret = %d\n",
+		       ret);
 		return;
 	}
 
@@ -617,13 +616,14 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 		goto Enable_cpus;
 	}
 
-#ifdef CONFIG_PM_SLEEP_MONITOR
-	stop_suspend_mon();
-#endif
 	arch_suspend_disable_irqs();
 	BUG_ON(!irqs_disabled());
 
 	system_state = SYSTEM_SUSPEND;
+
+#ifdef CONFIG_PM_SLEEP_MONITOR
+	stop_suspend_mon();
+#endif
 
 	error = syscore_suspend();
 	if (!error) {
@@ -642,12 +642,12 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 
 	system_state = SYSTEM_RUNNING;
 
-	arch_suspend_enable_irqs();
-	BUG_ON(irqs_disabled());
-
 #ifdef CONFIG_PM_SLEEP_MONITOR
 	start_suspend_mon();
 #endif
+
+	arch_suspend_enable_irqs();
+	BUG_ON(irqs_disabled());
 
  Enable_cpus:
 	enable_nonboot_cpus();

@@ -97,8 +97,8 @@
 	qcom,fg-batt-temp-delta = <6>;
 	qcom,fg-batt-temp-hyst = <1>;
 	qcom,fg-cutoff-current = <200>;
-	qcom,fg-cutoff-voltage = <3300>;
-	qcom,fg-empty-voltage = <3000>;
+	qcom,fg-cutoff-voltage = <3400>;
+	qcom,fg-empty-voltage = <3100>;
 	qcom,fg-sys-term-current = <(-580)>;
 	qcom,five-pin-battery;
 

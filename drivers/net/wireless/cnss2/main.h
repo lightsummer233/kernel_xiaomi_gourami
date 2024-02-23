@@ -8,7 +8,6 @@
 #include <linux/esoc_client.h>
 #include <linux/etherdevice.h>
 #include <linux/msm-bus.h>
-#include <linux/pm_qos.h>
 #include <net/cnss2.h>
 #include <soc/qcom/memory_dump.h>
 #if defined(CONFIG_MSM_SUBSYSTEM_RESTART) || defined(CONFIG_SUBSYSTEM_RAMDUMP)
@@ -359,7 +358,6 @@ struct cnss_plat_data {
 	struct notifier_block reboot_nb;
 	struct notifier_block panic_nb;
 	struct cnss_platform_cap cap;
-	struct pm_qos_request qos_request;
 	struct cnss_device_version device_version;
 	unsigned long device_id;
 	enum cnss_driver_status driver_status;
@@ -412,6 +410,7 @@ struct cnss_plat_data {
 	struct qmi_handle coex_qmi;
 	struct qmi_handle ims_qmi;
 	struct qmi_txn txn;
+	struct wakeup_source *recovery_ws;
 	u64 dynamic_feature;
 	void *get_info_cb_ctx;
 	int (*get_info_cb)(void *ctx, void *event, int event_len);

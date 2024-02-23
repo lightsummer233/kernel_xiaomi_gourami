@@ -433,7 +433,7 @@ static void ufshcd_update_uic_error_cnt(struct ufs_hba *hba, u32 reg, int type)
 #define UFSHCD_MANUAL_GC_HOLD_HIBERN8		2000	/* 2 seconds */
 
 /* Polling time to wait for fDeviceInit */
-#define FDEVICEINIT_COMPL_TIMEOUT 1500 /* millisecs */
+#define FDEVICEINIT_COMPL_TIMEOUT 5000 /* millisecs */
 
 #define ufshcd_toggle_vreg(_dev, _vreg, _on)				\
 	({                                                              \
@@ -11573,5 +11573,6 @@ EXPORT_SYMBOL_GPL(ufshcd_init);
 MODULE_AUTHOR("Santosh Yaragnavi <santosh.sy@samsung.com>");
 MODULE_AUTHOR("Vinayak Holikatti <h.vinayak@samsung.com>");
 MODULE_DESCRIPTION("Generic UFS host controller driver Core");
+MODULE_SOFTDEP("pre: governor_simpleondemand");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(UFSHCD_DRIVER_VERSION);

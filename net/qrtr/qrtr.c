@@ -646,7 +646,10 @@ static void qrtr_node_assign(struct qrtr_node *node, unsigned int nid)
 	down_write(&qrtr_node_lock);
 	list_for_each_entry(tnode, &qrtr_all_epts, item) {
 		if (tnode == node) {
-			radix_tree_insert(&qrtr_nodes, nid, node);
+			if (radix_tree_insert(&qrtr_nodes, nid, node)) {
+				kfree(node);
+				break;
+			};
 			if (node->nid == QRTR_EP_NID_AUTO)
 				node->nid = nid;
 			break;

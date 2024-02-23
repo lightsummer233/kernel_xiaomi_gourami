@@ -1,8 +1,0 @@
-# SPDX-License-Identifier: GPL-2.0-only
-
-config FINGERPRINT_GOODIX_FOD
-	tristate "GOODIX fingerprint sensor IRQ support"
-	depends on INPUT_FINGERPRINT
-	help
-		If you say yes here you get IRQ support for the GOODIX family
-		of fingerprint sensors from Goodix (GDX).

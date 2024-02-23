@@ -90,6 +90,8 @@
 #define BATT_MISS_SOC			50
 #define ESR_SOH_SOC			50
 #define EMPTY_SOC			0
+#define VBAT_CRITICAL_LOW_THR		2800
+#define EMPTY_DEBOUNCE_TIME_COUNT_MAX		5
 
 enum prof_load_status {
 	PROFILE_MISSING,
@@ -476,10 +478,6 @@ struct fg_dev {
 	int			last_msoc;
 	int			last_recharge_volt_mv;
 	int			delta_temp_irq_count;
-#ifdef CONFIG_BATT_VERIFY_BY_DS28E16
-	int			cycle_count;
-	int			maxim_cycle_count;
-#endif
 	enum esr_filter_status	esr_flt_sts;
 	bool			profile_available;
 	enum prof_load_status	profile_load_status;

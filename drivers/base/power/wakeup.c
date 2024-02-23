@@ -934,10 +934,10 @@ void pm_wakeup_clear(bool reset)
 
 void pm_system_irq_wakeup(unsigned int irq_number)
 {
-	if (pm_wakeup_irq == 0) {
-		struct irq_desc *desc;
-		const char *name = "null";
+	struct irq_desc *desc;
+	const char *name = "null";
 
+	if (pm_wakeup_irq == 0) {
 		if (msm_show_resume_irq_mask) {
 			desc = irq_to_desc(irq_number);
 			if (desc == NULL)

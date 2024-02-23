@@ -8,6 +8,8 @@
  */
 
 #include <linux/sched/mm.h>
+#include <linux/ktime.h>
+#include <linux/hrtimer.h>
 #include <linux/export.h>
 #include <linux/pm_runtime.h>
 #include <linux/pm_wakeirq.h>
@@ -62,22 +64,32 @@ static int rpm_suspend(struct device *dev, int rpmflags);
  * runtime_status field is updated, to account the time in the old state
  * correctly.
  */
-void update_pm_runtime_accounting(struct device *dev)
+static void update_pm_runtime_accounting(struct device *dev)
 {
-	unsigned long now = jiffies;
-	unsigned long delta;
-
-	delta = now - dev->power.accounting_timestamp;
-
-	dev->power.accounting_timestamp = now;
+	u64 now, last, delta;
 
 	if (dev->power.disable_depth > 0)
 		return;
 
+	last = dev->power.accounting_timestamp;
+
+	now = ktime_get_mono_fast_ns();
+	dev->power.accounting_timestamp = now;
+
+	/*
+	 * Because ktime_get_mono_fast_ns() is not monotonic during
+	 * timekeeping updates, ensure that 'now' is after the last saved
+	 * timesptamp.
+	 */
+	if (now < last)
+		return;
+
+	delta = now - last;
+
 	if (dev->power.runtime_status == RPM_SUSPENDED)
-		dev->power.suspended_jiffies += delta;
+		dev->power.suspended_time += delta;
 	else
-		dev->power.active_jiffies += delta;
+		dev->power.active_time += delta;
 }
 
 static void __update_runtime_status(struct device *dev, enum rpm_status status)
@@ -86,6 +98,32 @@ static void __update_runtime_status(struct device *dev, enum rpm_status status)
 	dev->power.runtime_status = status;
 }
 
+static u64 rpm_get_accounted_time(struct device *dev, bool suspended)
+{
+	u64 time;
+	unsigned long flags;
+
+	spin_lock_irqsave(&dev->power.lock, flags);
+
+	update_pm_runtime_accounting(dev);
+	time = suspended ? dev->power.suspended_time : dev->power.active_time;
+
+	spin_unlock_irqrestore(&dev->power.lock, flags);
+
+	return time;
+}
+
+u64 pm_runtime_active_time(struct device *dev)
+{
+	return rpm_get_accounted_time(dev, false);
+}
+
+u64 pm_runtime_suspended_time(struct device *dev)
+{
+	return rpm_get_accounted_time(dev, true);
+}
+EXPORT_SYMBOL_GPL(pm_runtime_suspended_time);
+
 /**
  * pm_runtime_deactivate_timer - Deactivate given device's suspend timer.
  * @dev: Device to handle.
@@ -93,7 +131,7 @@ static void __update_runtime_status(struct device *dev, enum rpm_status status)
 static void pm_runtime_deactivate_timer(struct device *dev)
 {
 	if (dev->power.timer_expires > 0) {
-		del_timer(&dev->power.suspend_timer);
+		hrtimer_try_to_cancel(&dev->power.suspend_timer);
 		dev->power.timer_expires = 0;
 	}
 }
@@ -119,43 +157,29 @@ static void pm_runtime_cancel_pending(struct device *dev)
  * Compute the autosuspend-delay expiration time based on the device's
  * power.last_busy time.  If the delay has already expired or is disabled
  * (negative) or the power.use_autosuspend flag isn't set, return 0.
- * Otherwise return the expiration time in jiffies (adjusted to be nonzero).
+ * Otherwise return the expiration time in nanoseconds (adjusted to be nonzero).
  *
  * This function may be called either with or without dev->power.lock held.
  * Either way it can be racy, since power.last_busy may be updated at any time.
  */
-unsigned long pm_runtime_autosuspend_expiration(struct device *dev)
+u64 pm_runtime_autosuspend_expiration(struct device *dev)
 {
 	int autosuspend_delay;
-	long elapsed;
-	unsigned long last_busy;
-	unsigned long expires = 0;
+	u64 expires;
 
 	if (!dev->power.use_autosuspend)
-		goto out;
+		return 0;
 
 	autosuspend_delay = READ_ONCE(dev->power.autosuspend_delay);
 	if (autosuspend_delay < 0)
-		goto out;
+		return 0;
 
-	last_busy = READ_ONCE(dev->power.last_busy);
-	elapsed = jiffies - last_busy;
-	if (elapsed < 0)
-		goto out;	/* jiffies has wrapped around. */
+	expires  = READ_ONCE(dev->power.last_busy);
+	expires += (u64)autosuspend_delay * NSEC_PER_MSEC;
+	if (expires > ktime_get_mono_fast_ns())
+		return expires;	/* Expires in the future */
 
-	/*
-	 * If the autosuspend_delay is >= 1 second, align the timer by rounding
-	 * up to the nearest second.
-	 */
-	expires = last_busy + msecs_to_jiffies(autosuspend_delay);
-	if (autosuspend_delay >= 1000)
-		expires = round_jiffies(expires);
-	expires += !expires;
-	if (elapsed >= expires - last_busy)
-		expires = 0;	/* Already expired. */
-
- out:
-	return expires;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(pm_runtime_autosuspend_expiration);
 
@@ -284,7 +308,7 @@ static int rpm_get_suppliers(struct device *dev)
 	return 0;
 }
 
-static void rpm_put_suppliers(struct device *dev)
+static void __rpm_put_suppliers(struct device *dev, bool try_to_suspend)
 {
 	struct device_link *link;
 
@@ -294,8 +318,28 @@ static void rpm_put_suppliers(struct device *dev)
 			continue;
 
 		while (refcount_dec_not_one(&link->rpm_active))
-			pm_runtime_put(link->supplier);
+			pm_runtime_put_noidle(link->supplier);
+
+		if (try_to_suspend)
+			pm_request_idle(link->supplier);
 	}
+}
+
+static void rpm_put_suppliers(struct device *dev)
+{
+	__rpm_put_suppliers(dev, true);
+}
+
+static void rpm_suspend_suppliers(struct device *dev)
+{
+	struct device_link *link;
+	int idx = device_links_read_lock();
+
+	list_for_each_entry_rcu(link, &dev->links.suppliers, c_node,
+				device_links_read_lock_held())
+		pm_request_idle(link->supplier);
+
+	device_links_read_unlock(idx);
 }
 
 /**
@@ -306,7 +350,7 @@ static void rpm_put_suppliers(struct device *dev)
 static int __rpm_callback(int (*cb)(struct device *), struct device *dev)
 	__releases(&dev->power.lock) __acquires(&dev->power.lock)
 {
-	int retval, idx;
+	int retval = 0, idx;
 	bool use_links = dev->power.links_count > 0;
 
 	if (dev->power.irq_safe) {
@@ -325,14 +369,17 @@ static int __rpm_callback(int (*cb)(struct device *), struct device *dev)
 			idx = device_links_read_lock();
 
 			retval = rpm_get_suppliers(dev);
-			if (retval)
+			if (retval) {
+				rpm_put_suppliers(dev);
 				goto fail;
+			}
 
 			device_links_read_unlock(idx);
 		}
 	}
 
-	retval = cb(dev);
+	if (cb)
+		retval = cb(dev);
 
 	if (dev->power.irq_safe) {
 		spin_lock(&dev->power.lock);
@@ -349,9 +396,9 @@ static int __rpm_callback(int (*cb)(struct device *), struct device *dev)
 		    || (dev->power.runtime_status == RPM_RESUMING && retval))) {
 			idx = device_links_read_lock();
 
- fail:
-			rpm_put_suppliers(dev);
+			__rpm_put_suppliers(dev, false);
 
+fail:
 			device_links_read_unlock(idx);
 		}
 
@@ -453,9 +500,6 @@ static int rpm_callback(int (*cb)(struct device *), struct device *dev)
 {
 	int retval;
 
-	if (!cb)
-		return -ENOSYS;
-
 	if (dev->power.memalloc_noio) {
 		unsigned int noio_flag;
 
@@ -511,13 +555,11 @@ static int rpm_suspend(struct device *dev, int rpmflags)
 
  repeat:
 	retval = rpm_check_suspend_allowed(dev);
-
 	if (retval < 0)
-		;	/* Conditions are wrong. */
+		goto out;	/* Conditions are wrong. */
 
 	/* Synchronous suspends are not allowed in the RPM_RESUMING state. */
-	else if (dev->power.runtime_status == RPM_RESUMING &&
-	    !(rpmflags & RPM_ASYNC))
+	if (dev->power.runtime_status == RPM_RESUMING && !(rpmflags & RPM_ASYNC))
 		retval = -EAGAIN;
 	if (retval)
 		goto out;
@@ -525,7 +567,7 @@ static int rpm_suspend(struct device *dev, int rpmflags)
 	/* If the autosuspend_delay time hasn't expired yet, reschedule. */
 	if ((rpmflags & RPM_AUTO)
 	    && dev->power.runtime_status != RPM_SUSPENDING) {
-		unsigned long expires = pm_runtime_autosuspend_expiration(dev);
+		u64 expires = pm_runtime_autosuspend_expiration(dev);
 
 		if (expires != 0) {
 			/* Pending requests need to be canceled. */
@@ -538,10 +580,20 @@ static int rpm_suspend(struct device *dev, int rpmflags)
 			 * expire; pm_suspend_timer_fn() will take care of the
 			 * rest.
 			 */
-			if (!(dev->power.timer_expires && time_before_eq(
-			    dev->power.timer_expires, expires))) {
+			if (!(dev->power.timer_expires &&
+					dev->power.timer_expires <= expires)) {
+				/*
+				 * We add a slack of 25% to gather wakeups
+				 * without sacrificing the granularity.
+				 */
+				u64 slack = (u64)READ_ONCE(dev->power.autosuspend_delay) *
+						    (NSEC_PER_MSEC >> 2);
+
 				dev->power.timer_expires = expires;
-				mod_timer(&dev->power.suspend_timer, expires);
+				hrtimer_start_range_ns(&dev->power.suspend_timer,
+						ns_to_ktime(expires),
+						slack,
+						HRTIMER_MODE_ABS);
 			}
 			dev->power.timer_autosuspends = 1;
 			goto out;
@@ -608,6 +660,8 @@ static int rpm_suspend(struct device *dev, int rpmflags)
 	if (retval)
 		goto fail;
 
+	dev_pm_enable_wake_irq_complete(dev);
+
  no_callback:
 	__update_runtime_status(dev, RPM_SUSPENDED);
 	pm_runtime_deactivate_timer(dev);
@@ -625,8 +679,11 @@ static int rpm_suspend(struct device *dev, int rpmflags)
 		goto out;
 	}
 
+	if (dev->power.irq_safe)
+		goto out;
+
 	/* Maybe the parent is now able to suspend. */
-	if (parent && !parent->power.ignore_children && !dev->power.irq_safe) {
+	if (parent && !parent->power.ignore_children) {
 		spin_unlock(&dev->power.lock);
 
 		spin_lock(&parent->power.lock);
@@ -635,6 +692,14 @@ static int rpm_suspend(struct device *dev, int rpmflags)
 
 		spin_lock(&dev->power.lock);
 	}
+	/* Maybe the suppliers are now able to suspend. */
+	if (dev->power.links_count > 0) {
+		spin_unlock_irq(&dev->power.lock);
+
+		rpm_suspend_suppliers(dev);
+
+		spin_lock_irq(&dev->power.lock);
+	}
 
  out:
 	trace_rpm_return_int_rcuidle(dev, _THIS_IP_, retval);
@@ -642,7 +707,7 @@ static int rpm_suspend(struct device *dev, int rpmflags)
 	return retval;
 
  fail:
-	dev_pm_disable_wake_irq_check(dev);
+	dev_pm_disable_wake_irq_check(dev, true);
 	__update_runtime_status(dev, RPM_ACTIVE);
 	dev->power.deferred_resume = false;
 	wake_up_all(&dev->power.wait_queue);
@@ -825,7 +890,7 @@ static int rpm_resume(struct device *dev, int rpmflags)
 
 	callback = RPM_GET_CALLBACK(dev, runtime_resume);
 
-	dev_pm_disable_wake_irq_check(dev);
+	dev_pm_disable_wake_irq_check(dev, false);
 	retval = rpm_callback(callback, dev);
 	if (retval) {
 		__update_runtime_status(dev, RPM_SUSPENDED);
@@ -901,27 +966,32 @@ static void pm_runtime_work(struct work_struct *work)
 
 /**
  * pm_suspend_timer_fn - Timer function for pm_schedule_suspend().
- * @data: Device pointer passed by pm_schedule_suspend().
+ * @timer: hrtimer used by pm_schedule_suspend().
  *
  * Check if the time is right and queue a suspend request.
  */
-static void pm_suspend_timer_fn(struct timer_list *t)
+static enum hrtimer_restart  pm_suspend_timer_fn(struct hrtimer *timer)
 {
-	struct device *dev = from_timer(dev, t, power.suspend_timer);
+	struct device *dev = container_of(timer, struct device, power.suspend_timer);
 	unsigned long flags;
-	unsigned long expires;
+	u64 expires;
 
 	spin_lock_irqsave(&dev->power.lock, flags);
 
 	expires = dev->power.timer_expires;
-	/* If 'expire' is after 'jiffies' we've been called too early. */
-	if (expires > 0 && !time_after(expires, jiffies)) {
+	/*
+	 * If 'expires' is after the current time, we've been called
+	 * too early.
+	 */
+	if (expires > 0 && expires < ktime_get_mono_fast_ns()) {
 		dev->power.timer_expires = 0;
 		rpm_suspend(dev, dev->power.timer_autosuspends ?
 		    (RPM_ASYNC | RPM_AUTO) : RPM_ASYNC);
 	}
 
 	spin_unlock_irqrestore(&dev->power.lock, flags);
+
+	return HRTIMER_NORESTART;
 }
 
 /**
@@ -932,6 +1002,7 @@ static void pm_suspend_timer_fn(struct timer_list *t)
 int pm_schedule_suspend(struct device *dev, unsigned int delay)
 {
 	unsigned long flags;
+	u64 expires;
 	int retval;
 
 	spin_lock_irqsave(&dev->power.lock, flags);
@@ -948,10 +1019,10 @@ int pm_schedule_suspend(struct device *dev, unsigned int delay)
 	/* Other scheduled or pending requests need to be canceled. */
 	pm_runtime_cancel_pending(dev);
 
-	dev->power.timer_expires = jiffies + msecs_to_jiffies(delay);
-	dev->power.timer_expires += !dev->power.timer_expires;
+	expires = ktime_get_mono_fast_ns() + (u64)delay * NSEC_PER_MSEC;
+	dev->power.timer_expires = expires;
 	dev->power.timer_autosuspends = 0;
-	mod_timer(&dev->power.suspend_timer, dev->power.timer_expires);
+	hrtimer_start(&dev->power.suspend_timer, expires, HRTIMER_MODE_ABS);
 
  out:
 	spin_unlock_irqrestore(&dev->power.lock, flags);
@@ -1279,6 +1350,9 @@ void __pm_runtime_disable(struct device *dev, bool check_resume)
 		pm_runtime_put_noidle(dev);
 	}
 
+	/* Update time accounting before disabling PM-runtime. */
+	update_pm_runtime_accounting(dev);
+
 	if (!dev->power.disable_depth++)
 		__pm_runtime_barrier(dev);
 
@@ -1297,10 +1371,15 @@ void pm_runtime_enable(struct device *dev)
 
 	spin_lock_irqsave(&dev->power.lock, flags);
 
-	if (dev->power.disable_depth > 0)
+	if (dev->power.disable_depth > 0) {
 		dev->power.disable_depth--;
-	else
+
+		/* About to enable runtime pm, set accounting_timestamp to now */
+		if (!dev->power.disable_depth)
+			dev->power.accounting_timestamp = ktime_get_mono_fast_ns();
+	} else {
 		dev_warn(dev, "Unbalanced %s!\n", __func__);
+	}
 
 	WARN(!dev->power.disable_depth &&
 	     dev->power.runtime_status == RPM_SUSPENDED &&
@@ -1497,11 +1576,12 @@ void pm_runtime_init(struct device *dev)
 	dev->power.request_pending = false;
 	dev->power.request = RPM_REQ_NONE;
 	dev->power.deferred_resume = false;
-	dev->power.accounting_timestamp = jiffies;
+	dev->power.needs_force_resume = 0;
 	INIT_WORK(&dev->power.work, pm_runtime_work);
 
 	dev->power.timer_expires = 0;
-	timer_setup(&dev->power.suspend_timer, pm_suspend_timer_fn, 0);
+	hrtimer_init(&dev->power.suspend_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+	dev->power.suspend_timer.function = pm_suspend_timer_fn;
 
 	init_waitqueue_head(&dev->power.wait_queue);
 }
@@ -1600,8 +1680,6 @@ void pm_runtime_get_suppliers(struct device *dev)
 void pm_runtime_put_suppliers(struct device *dev)
 {
 	struct device_link *link;
-	unsigned long flags;
-	bool put;
 	int idx;
 
 	idx = device_links_read_lock();
@@ -1609,11 +1687,17 @@ void pm_runtime_put_suppliers(struct device *dev)
 	list_for_each_entry_rcu(link, &dev->links.suppliers, c_node,
 				device_links_read_lock_held())
 		if (link->supplier_preactivated) {
+			bool put;
+
 			link->supplier_preactivated = false;
-			spin_lock_irqsave(&dev->power.lock, flags);
+
+			spin_lock_irq(&dev->power.lock);
+
 			put = pm_runtime_status_suspended(dev) &&
 			      refcount_dec_not_one(&link->rpm_active);
-			spin_unlock_irqrestore(&dev->power.lock, flags);
+
+			spin_unlock_irq(&dev->power.lock);
+
 			if (put)
 				pm_runtime_put(link->supplier);
 		}
@@ -1681,10 +1765,12 @@ int pm_runtime_force_suspend(struct device *dev)
 	 * its parent, but set its status to RPM_SUSPENDED anyway in case this
 	 * function will be called again for it in the meantime.
 	 */
-	if (pm_runtime_need_not_resume(dev))
+	if (pm_runtime_need_not_resume(dev)) {
 		pm_runtime_set_suspended(dev);
-	else
+	} else {
 		__update_runtime_status(dev, RPM_SUSPENDED);
+		dev->power.needs_force_resume = 1;
+	}
 
 	return 0;
 
@@ -1711,7 +1797,7 @@ int pm_runtime_force_resume(struct device *dev)
 	int (*callback)(struct device *);
 	int ret = 0;
 
-	if (!pm_runtime_status_suspended(dev) || pm_runtime_need_not_resume(dev))
+	if (!pm_runtime_status_suspended(dev) || !dev->power.needs_force_resume)
 		goto out;
 
 	/*
@@ -1730,6 +1816,7 @@ int pm_runtime_force_resume(struct device *dev)
 
 	pm_runtime_mark_last_busy(dev);
 out:
+	dev->power.needs_force_resume = 0;
 	pm_runtime_enable(dev);
 	return ret;
 }
