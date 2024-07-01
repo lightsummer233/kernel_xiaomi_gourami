@@ -126,9 +126,10 @@ static ssize_t runtime_active_time_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
 	int ret;
-	u64 tmp = pm_runtime_active_time(dev);
-	do_div(tmp, NSEC_PER_MSEC);
-	ret = sysfs_emit(buf, "%llu\n", tmp);
+	spin_lock_irq(&dev->power.lock);
+	update_pm_runtime_accounting(dev);
+	ret = sysfs_emit(buf, "%i\n", jiffies_to_msecs(dev->power.active_jiffies));
+	spin_unlock_irq(&dev->power.lock);
 	return ret;
 }
 
@@ -138,9 +139,11 @@ static ssize_t runtime_suspended_time_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
 	int ret;
-	u64 tmp = pm_runtime_suspended_time(dev);
-	do_div(tmp, NSEC_PER_MSEC);
-	ret = sysfs_emit(buf, "%llu\n", tmp);
+	spin_lock_irq(&dev->power.lock);
+	update_pm_runtime_accounting(dev);
+	ret = sysfs_emit(buf, "%i\n",
+		jiffies_to_msecs(dev->power.suspended_jiffies));
+	spin_unlock_irq(&dev->power.lock);
 	return ret;
 }
 
