@@ -1,5 +1,0 @@
-BRANCH=android-msm-alioth-4.19
-KERNEL_DIR=private/msm-google
-DEFCONFIG=alioth_user_defconfig
-. ${ROOT_DIR}/${KERNEL_DIR}/build.config.gourami.common.clang
-POST_DEFCONFIG_CMDS="check_defconfig"
