@@ -5,11 +5,11 @@ CROSS_COMPILE=aarch64-linux-gnu-
 LLVM=1
 LLVM_IAS=1
 DEPMOD=depmod
-CLANG_PREBUILT_BIN=prebuilts-master/clang/host/linux-x86/clang-r450784e/bin
+CLANG_PREBUILT_BIN=prebuilts-master/clang/host/linux-x86/clang-r536225/bin
 BUILDTOOLS_PREBUILT_BIN=build/build-tools/path/linux-x86
 
 EXTRA_CMDS=''
-LD_LIBRARY_PATH=${ROOT_DIR}/prebuilts-master/clang/host/linux-x86/clang-r450784e/lib64:$LD_LIBRARY_PATH
+LD_LIBRARY_PATH=${ROOT_DIR}/prebuilts-master/clang/host/linux-x86/clang-r536225/lib64:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH
 LINUX_GCC_CROSS_COMPILE_PREBUILTS_BIN=prebuilts/gas/linux-x86
 LIBUFDT_PREBUILTS_BIN=prebuilts-master/misc/linux-x86/libufdt
