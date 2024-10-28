@@ -99,6 +99,7 @@
 #define FTS_REG_SENSIVITY                   0x9d
 #define FTS_REG_THDIFF                      0x85
 #define FTS_REG_MONITOR_MODE                0x86
+#define FTS_REG_REPORT_RATE                 0x88
 #define FTS_REG_TIME_ENTER_MONITOR		0x87
 #define FTS_REG_ORIENTATION                 0x8c
 #define FTS_REG_EDGE_FILTER_LEVEL           0x9c

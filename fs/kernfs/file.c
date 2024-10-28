@@ -468,7 +468,7 @@ static int kernfs_fop_mmap(struct file *file, struct vm_area_struct *vma)
 	 * warnings and we don't want to add spurious locking dependency
 	 * between the two.  Check whether mmap is actually implemented
 	 * without grabbing @of->mutex by testing HAS_MMAP flag.  See the
-	 * comment in kernfs_file_open() for more details.
+	 * comment in kernfs_fop_open() for more details.
 	 */
 	if (!(of->kn->flags & KERNFS_HAS_MMAP))
 		return -ENODEV;
@@ -504,9 +504,11 @@ static int kernfs_fop_mmap(struct file *file, struct vm_area_struct *vma)
 		goto out_put;
 
 	rc = 0;
-	of->mmapped = true;
-	of_on(of)->nr_mmapped++;
-	of->vm_ops = vma->vm_ops;
+	if (!of->mmapped) {
+		of->mmapped = true;
+		of_on(of)->nr_mmapped++;
+		of->vm_ops = vma->vm_ops;
+	}
 	vma->vm_ops = &kernfs_vm_ops;
 out_put:
 	kernfs_put_active(of->kn);

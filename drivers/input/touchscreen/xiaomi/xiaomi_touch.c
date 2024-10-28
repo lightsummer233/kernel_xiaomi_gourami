@@ -55,6 +55,11 @@ static long xiaomi_touch_dev_ioctl(struct file *file, unsigned int cmd,
 		return -ENOMEM;
 	}
 
+	if (pdata->skip_update) {
+		MI_TOUCH_LOGI(1, "%s %s: Skipping userspace CTRL\n", MI_TAG, __func__);
+		return 0;
+	}
+
 	mutex_lock(&dev->mutex);
 	ret = copy_from_user(&buf, (int __user *)argp, sizeof(buf));
 
@@ -247,6 +252,153 @@ struct device_attribute *attr, const char *buf, size_t count)
 		MI_TOUCH_LOGE(1, "%s %s: has not implement\n", MI_TAG, __func__);
 	}
 	MI_TOUCH_LOGI(1, "%s %s: value:%d\n", MI_TAG, __func__, !!input);
+
+	return count;
+}
+
+static ssize_t skip_update_show(struct device *dev,
+struct device_attribute *attr, char *buf)
+{
+	struct xiaomi_touch_pdata *pdata = dev_get_drvdata(dev);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", pdata->skip_update);
+}
+
+static ssize_t skip_update_store(struct device *dev,
+struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct xiaomi_touch_pdata *pdata = dev_get_drvdata(dev);
+	int input = 0;
+	int ret = 0;
+
+	ret = sscanf(buf, "%d", &input);
+	if (ret < 0)
+		return -EINVAL;
+
+	if (!pdata) {
+		MI_TOUCH_LOGE(1, "%s %s: xiaomi touch pdata is null\n",
+			MI_TAG, __func__);
+		return -EINVAL;
+	}
+
+	pdata->skip_update = input;
+
+	pr_info("%s value:%d\n", __func__, input);	if (input)
+		MI_TOUCH_LOGD(1, "%s %s: Value: %d\n",
+			MI_TAG, __func__, input);
+
+	return count;
+}
+
+static ssize_t creutz_mode_show(struct device *dev,
+struct device_attribute *attr, char *buf)
+{
+	struct xiaomi_touch_pdata *pdata = dev_get_drvdata(dev);
+	if (!pdata) {
+		MI_TOUCH_LOGE(1, "%s %s: xiaomi touch pdata is null\n", MI_TAG, __func__);
+		return -EINVAL;
+	}
+	return snprintf(buf, PAGE_SIZE, "%d\n", pdata->creutz_mode);
+}
+
+static ssize_t creutz_mode_store(struct device *dev,
+struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct xiaomi_touch_pdata *pdata = dev_get_drvdata(dev);
+	struct xiaomi_touch_interface *touch_data = pdata->touch_data;
+	int input = 0;
+	int ret = 0;
+
+	ret = sscanf(buf, "%d", &input);
+	if (ret < 0)
+		return -EINVAL;
+
+	if (!pdata || !touch_data) {
+		MI_TOUCH_LOGE(1, "%s %s: xiaomi touch pdata is null\n",
+			MI_TAG, __func__);
+		return -EINVAL;
+	}
+
+	if (input) {
+		pdata->skip_update = true;
+		pdata->creutz_mode = true;
+		touch_data->setModeValue(0, 1);
+		touch_data->setModeValue(1, 1);
+#ifdef CONFIG_TOUCHSCREEN_SUPPORT_NEW_GAME_MODE
+		touch_data->setModeValue(2, 5);
+		touch_data->setModeValue(3, 5);
+		touch_data->setModeValue(5, 5);
+#else
+		touch_data->setModeValue(2, 50);
+		touch_data->setModeValue(3, 34);
+#endif
+		touch_data->setModeValue(7, 0);
+#ifdef CONFIG_BOARD_LMI
+		touch_data->setModeValue(9, GX_180HZ_SAMPLING_RATE);
+#elif defined(CONFIG_BOARD_ALIOTH)
+		touch_data->setModeValue(9, GX_360HZ_SAMPLING_RATE);
+#endif
+		MI_TOUCH_LOGI(1, "%s %s: Creutz ON\n", MI_TAG, __func__);
+	} else {
+		pdata->skip_update = false;
+		pdata->creutz_mode = false;
+		touch_data->resetMode(0);
+		touch_data->resetMode(7);
+		touch_data->resetMode(9);
+		MI_TOUCH_LOGI(1, "%s %s: Creutz OFF\n", MI_TAG, __func__);
+	}
+
+	if (input)
+		MI_TOUCH_LOGI(1, "%s %s: Value: %d\n",
+			MI_TAG, __func__, input);
+
+	return count;
+}
+
+static ssize_t fod_mode_show(struct device *dev,
+struct device_attribute *attr, char *buf)
+{
+	struct xiaomi_touch_pdata *pdata = dev_get_drvdata(dev);
+	if (!pdata) {
+		MI_TOUCH_LOGE(1, "%s %s: xiaomi touch pdata is null\n", MI_TAG, __func__);
+		return -EINVAL;
+	}
+	return snprintf(buf, PAGE_SIZE, "%d\n", pdata->fod_mode);
+}
+
+static ssize_t fod_mode_store(struct device *dev,
+struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct xiaomi_touch_pdata *pdata = dev_get_drvdata(dev);
+	struct xiaomi_touch_interface *touch_data = pdata->touch_data;
+	int input = 0;
+	int ret = 0;
+
+	ret = sscanf(buf, "%d", &input);
+	if (ret < 0)
+		return -EINVAL;
+
+	if (!pdata || !touch_data) {
+		MI_TOUCH_LOGE(1, "%s %s: xiaomi touch pdata is null\n",
+			MI_TAG, __func__);
+		return -EINVAL;
+	}
+
+	if (input) {
+		pdata->skip_update = true;
+		pdata->fod_mode = true;
+		touch_data->setModeValue(11, 1);
+		MI_TOUCH_LOGI(1, "%s %s: Force FOD Mode ON\n", MI_TAG, __func__);
+	} else {
+		pdata->skip_update = false;
+		pdata->fod_mode = false;
+		touch_data->resetMode(11);
+		MI_TOUCH_LOGI(1, "%s %s: Force FOD Mode OFF\n", MI_TAG, __func__);
+	}
+
+	if (input)
+		MI_TOUCH_LOGD(1, "%s %s: Value: %d\n",
+			MI_TAG, __func__, input);
 
 	return count;
 }
@@ -462,6 +614,15 @@ static DEVICE_ATTR(palm_sensor, (S_IRUGO | S_IWUSR | S_IWGRP),
 static DEVICE_ATTR(p_sensor, (S_IRUGO | S_IWUSR | S_IWGRP),
 		   p_sensor_show, p_sensor_store);
 
+static DEVICE_ATTR(skip_update, (S_IRUGO | S_IWUSR | S_IWGRP),
+		   skip_update_show, skip_update_store);
+
+static DEVICE_ATTR(creutz_mode, (S_IRUGO | S_IWUSR | S_IWGRP),
+		   creutz_mode_show, creutz_mode_store);
+
+static DEVICE_ATTR(fod_mode, (S_IRUGO | S_IWUSR | S_IWGRP),
+		   fod_mode_show, fod_mode_store);
+
 static DEVICE_ATTR(panel_vendor, (S_IRUGO),
 		   panel_vendor_show, NULL);
 
@@ -490,6 +651,9 @@ static struct attribute *touch_attr_group[] = {
 	&dev_attr_panel_display.attr,
 	&dev_attr_touch_vendor.attr,
 	&dev_attr_log_debug.attr,
+	&dev_attr_skip_update.attr,
+	&dev_attr_creutz_mode.attr,
+	&dev_attr_fod_mode.attr,
 #if XIAOMI_ROI
 	&dev_attr_partial_diff_data.attr,
 #endif

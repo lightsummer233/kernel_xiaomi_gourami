@@ -68,8 +68,7 @@ static unsigned int *log_buf_size;
 static dma_addr_t log_buf_paddr;
 #endif
 
-#define WDOG_BITE_OFFSET_IN_SECONDS 3
-#define WDOG_CONSOLE_OFFSET_IN_SECONDS 17
+#define WDOG_BITE_OFFSET_IN_SECONDS 10
 
 static struct msm_watchdog_data *wdog_data;
 
@@ -887,34 +886,6 @@ static int init_watchdog_sysfs(struct msm_watchdog_data *wdog_dd)
 	return error;
 }
 
-static bool console_enabled;
-
-static int __init setup_console_enabled(char *unused)
-{
-	console_enabled = true;
-
-	return 1;
-}
-
-#ifdef CONFIG_QCOM_WATCHDOG_V2_MODULE
-#undef __setup
-/* Good for only one __setup per source file */
-#define __setup(str, func)					\
-static void parse_cmdline(void)					\
-{								\
-	extern char *saved_command_line;			\
-	size_t len = strlen(saved_command_line);		\
-	char *cp = strnstr(saved_command_line, str, len);	\
-								\
-	if (cp)							\
-		func(cp);					\
-}
-#else
-static inline void parse_cmdline(void) {}
-#endif
-
-__setup("androidboot.console=", setup_console_enabled);
-
 #ifdef CONFIG_QCOM_INITIAL_LOGBUF
 static void minidump_reg_init_log_buf(void)
 {
@@ -1018,13 +989,6 @@ static void init_watchdog_data(struct msm_watchdog_data *wdog_dd)
 	delay_time = msecs_to_jiffies(wdog_dd->pet_time);
 	wdog_dd->min_slack_ticks = UINT_MAX;
 	wdog_dd->min_slack_ns = ULLONG_MAX;
-	parse_cmdline();
-	if (console_enabled) {
-		dev_info(wdog_dd->dev, "Console enabled, extend "
-				"bark/bite times by %d seconds\n",
-				WDOG_CONSOLE_OFFSET_IN_SECONDS);
-		wdog_dd->bark_time += WDOG_CONSOLE_OFFSET_IN_SECONDS*1000;
-	}
 	timeout = (wdog_dd->bark_time * WDT_HZ)/1000;
 	__raw_writel(timeout, wdog_dd->base + WDT0_BARK_TIME);
 	__raw_writel(timeout + WDOG_BITE_OFFSET_IN_SECONDS*WDT_HZ,

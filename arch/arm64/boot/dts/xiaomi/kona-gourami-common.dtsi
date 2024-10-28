@@ -29,6 +29,7 @@
 #include "kona-gourami-regulators.dtsi"
 #include "kona-gourami-thermal.dtsi"
 #include "kona-gourami-usb.dtsi"
+#include "kona-gourami-wdog.dtsi"
 
 &soc {
 	gpio_keys {

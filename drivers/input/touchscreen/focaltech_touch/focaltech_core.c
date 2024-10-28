@@ -1310,6 +1310,18 @@ static void fts_init_touchmode_data(void)
 	xiaomi_touch_interfaces.touch_mode[Touch_Tolerance][GET_DEF_VALUE] = reg_value;
 	xiaomi_touch_interfaces.touch_mode[Touch_Tolerance][SET_CUR_VALUE] = reg_value;
 	xiaomi_touch_interfaces.touch_mode[Touch_Tolerance][GET_CUR_VALUE] = reg_value;
+
+	/* report rate */
+	ret = fts_i2c_read_reg(fts_data->client, FTS_REG_REPORT_RATE, &reg_value);
+	if (ret < 0) {
+		FTS_ERROR("read report rate reg error");
+	}
+	xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][GET_MAX_VALUE] = GX_180HZ_SAMPLING_RATE;
+	xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][GET_MIN_VALUE] = GX_120HZ_SAMPLING_RATE;
+	xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][GET_DEF_VALUE] = reg_value;
+	xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][SET_CUR_VALUE] = reg_value;
+	xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][GET_CUR_VALUE] = reg_value;
+
 	/* edge filter orientation*/
 	xiaomi_touch_interfaces.touch_mode[Touch_Panel_Orientation][GET_MAX_VALUE] = 3;
 	xiaomi_touch_interfaces.touch_mode[Touch_Panel_Orientation][GET_MIN_VALUE] = 0;
@@ -1371,6 +1383,9 @@ static void fts_update_touchmode_data(int mode)
 			ret = fts_i2c_write_reg(fts_data->client, FTS_REG_EDGE_FILTER_LEVEL, (u8)xiaomi_touch_interfaces.touch_mode[Touch_Edge_Filter][GET_DEF_VALUE]);
 			if (ret < 0)
 				FTS_ERROR("restore orientation error, ret=%d\n", ret);
+			ret = fts_i2c_write_reg(fts_data->client, FTS_REG_REPORT_RATE, (u8)xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][GET_DEF_VALUE]);
+			if (ret < 0)
+				FTS_ERROR("restore reaper rate error, ret=%d\n", ret);
 			fts_data->gamemode_enabled = false;
 		}
 		break;
@@ -1430,6 +1445,16 @@ static void fts_update_touchmode_data(int mode)
 			}
 		break;
 	case Touch_Report_Rate:
+		break;
+	case Touch_Philistine_Mode:
+		if (fts_data->gamemode_enabled) {
+			/* We will call the value configuration through ximi touch, we can set it directly, but what's the fun
+			 * on that? Another hero, oh please!.
+			 */
+			ret = fts_i2c_write_reg(fts_data->client, FTS_REG_REPORT_RATE, temp_value);
+			if (ret < 0)
+				FTS_ERROR("Write reaper rate error, ret=%d\n", ret);
+		}
 		break;
 	default:
 		break;
@@ -1586,7 +1611,7 @@ static int fts_get_dt_coords(struct device *dev, char *name, struct fts_ts_platf
 	ret = of_property_read_u32(np, "focaltech,lockdown-info-addr", &pdata->lockdown_info_addr);
 	if (ret)
 		FTS_ERROR("Unable to get lockdown-info-addr");
-	
+
 	ret = of_property_read_u32_array(np, name, coords, coords_size);
 	if (ret && (ret != -EINVAL)) {
 		FTS_ERROR("Unable to read %s", name);

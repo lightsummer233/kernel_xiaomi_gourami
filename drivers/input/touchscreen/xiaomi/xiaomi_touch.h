@@ -82,6 +82,19 @@ struct xiaomi_diff_data {
 };
 #endif
 
+/*
+	"Reaper, Reaper", that's what people call me! Why? 'Cause they all die!
+	When I sing, I end their lives~ You act as though
+	payback makes you a noble man, Is that a fact?
+	Well, you're a goddamn Philistine!
+*/
+
+#define GX_120HZ_SAMPLING_RATE				0x0C
+#define GX_180HZ_SAMPLING_RATE				0x12
+#define GX_240HZ_SAMPLING_RATE				0x18
+#define GX_360HZ_SAMPLING_RATE				0x24
+#define GX_480HZ_SAMPLING_RATE				0x30
+
 /*CUR,DEFAULT,MIN,MAX*/
 #define VALUE_TYPE_SIZE 6
 #define VALUE_GRIP_SIZE 9
@@ -113,18 +126,19 @@ enum MODE_TYPE {
 #endif
 	Touch_Edge_Filter      = 7,
 	Touch_Panel_Orientation = 8,
-	Touch_Report_Rate      = 9,
-	Touch_Fod_Enable       = 10,
-	Touch_Aod_Enable       = 11,
-	Touch_Resist_RF        = 12,
-	Touch_Idle_Time        = 13,
-	Touch_Doubletap_Mode   = 14,
-	Touch_Grip_Mode        = 15,
-	Touch_FodIcon_Enable   = 16,
-	Touch_Nonui_Mode       = 17,
-	Touch_Debug_Level      = 18,
-	Touch_Power_Status     = 19,
-	Touch_Mode_NUM         = 20,
+	Touch_Philistine_Mode  = 9,
+	Touch_Report_Rate      = 10,
+	Touch_Fod_Enable       = 11,
+	Touch_Aod_Enable       = 12,
+	Touch_Resist_RF        = 13,
+	Touch_Idle_Time        = 14,
+	Touch_Doubletap_Mode   = 15,
+	Touch_Grip_Mode        = 16,
+	Touch_FodIcon_Enable   = 17,
+	Touch_Nonui_Mode       = 18,
+	Touch_Debug_Level      = 19,
+	Touch_Power_Status     = 20,
+	Touch_Mode_NUM         = 21,
 };
 
 struct xiaomi_touch_interface {
@@ -169,6 +183,9 @@ struct xiaomi_touch_pdata{
 	int psensor_value;
 	bool psensor_changed;
 	const char *name;
+	bool skip_update;
+	bool creutz_mode;
+	bool fod_mode;
 	u8 debug_log;
 #if XIAOMI_ROI
 	struct xiaomi_diff_data *diff_data;

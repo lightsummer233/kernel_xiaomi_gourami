@@ -105,12 +105,9 @@ static void fts_update_touchmode_data(struct fts_ts_data *ts_data);
 #define ORIENTATION_0_OR_180	0	/* anticlockwise 0 or 180 degrees */
 #define NORMAL_ORIENTATION_90	1	/* anticlockwise 90 degrees in normal */
 #define NORMAL_ORIENTATION_270	2	/* anticlockwise 270 degrees in normal */
-#define GAME_ORIENTATION_90	3	/* anticlockwise 90 degrees in game */
+#define GAME_ORIENTATION_90		3	/* anticlockwise 90 degrees in game */
 #define GAME_ORIENTATION_270	4	/* anticlockwise 270 degrees in game */
-
-
 #endif
-
 /*****************************************************************************
 *  Name: fts_wait_tp_to_valid
 *  Brief: Read chip id until TP FW become valid(Timeout: TIMEOUT_READ_REG),
@@ -2155,6 +2152,13 @@ static void fts_init_touch_mode_data(struct fts_ts_data *ts_data)
 	xiaomi_touch_interfaces.touch_mode[Touch_Edge_Filter][SET_CUR_VALUE] = 2;
 	xiaomi_touch_interfaces.touch_mode[Touch_Edge_Filter][GET_CUR_VALUE] = 2;
 
+	/* report rate */
+	xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][GET_MAX_VALUE] = GX_480HZ_SAMPLING_RATE;
+	xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][GET_MIN_VALUE] = GX_180HZ_SAMPLING_RATE;
+	xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][GET_DEF_VALUE] = GX_240HZ_SAMPLING_RATE;
+	xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][SET_CUR_VALUE] = GX_240HZ_SAMPLING_RATE;
+	xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][GET_CUR_VALUE] = GX_360HZ_SAMPLING_RATE;
+
 	FTS_INFO("touchfeature value init done");
 
 	return;
@@ -2244,6 +2248,11 @@ static void fts_update_touchmode_data(struct fts_ts_data *ts_data)
 	ret = fts_write_reg(FTS_REG_EDGE_FILTER_LEVEL, mode_set_value);
 	if (ret < 0)
 		FTS_ERROR("Write edge filter error, ret=%d\n", ret);
+
+	mode_set_value = xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][SET_CUR_VALUE];
+	ret = fts_write_reg(FTS_REG_REPORT_RATE, mode_set_value);
+	if (ret < 0)
+		FTS_ERROR("Write reaper rate error, ret=%d\n", ret);
 
 	mutex_unlock(&ts_data->cmd_update_mutex);
 	pm_relax(ts_data->dev);
@@ -2349,6 +2358,9 @@ static void fts_game_mode_recovery(struct fts_ts_data *ts_data)
 
 	xiaomi_touch_interfaces.touch_mode[Touch_Edge_Filter][GET_CUR_VALUE] =
 		xiaomi_touch_interfaces.touch_mode[Touch_Edge_Filter][GET_DEF_VALUE];
+
+	xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][GET_CUR_VALUE] =
+		xiaomi_touch_interfaces.touch_mode[Touch_Philistine_Mode][GET_DEF_VALUE];
 
 	fts_update_touchmode_data(ts_data);
 }

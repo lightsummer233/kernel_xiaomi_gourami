@@ -1048,7 +1048,7 @@ static int aw8697_haptic_stop(struct aw8697 *aw8697)
 	unsigned char reg_val = 0;
 	bool force_flag = true;
 
-	aw_dev_info(aw8697->dev, "%s enter\n", __func__);
+	aw_dev_dbg(aw8697->dev, "%s enter\n", __func__);
 	if (aw8697->chip_version == AW8697_CHIP_9X) {
 		aw8697_haptic_play_go(aw8697, false);
 		aw8697_haptic_stop_delay(aw8697);
@@ -1101,7 +1101,7 @@ static int aw8697_haptic_stop(struct aw8697 *aw8697)
 
 static int aw8697_haptic_start(struct aw8697 *aw8697)
 {
-	pr_debug("%s enter\n", __func__);
+	aw_dev_dbg(aw8697->dev, "%s enter\n", __func__);
 
 	aw8697_haptic_play_go(aw8697, true);
 
